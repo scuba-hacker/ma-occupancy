@@ -4,6 +4,8 @@
 #include <M5_DLight.h>
 
 const bool test_with_stubbed_sensors=true;
+const int millis_between_pir_triggers = 2100;   // Once triggered, PIR stays triggered for 2 seconds
+const int millis_between_lux_reads = 250;
 
 const int PIR_GPIO = 36;
 M5_DLight light_sensor;
@@ -16,11 +18,7 @@ bool lux_change=false;
 
 int pir_trigger_count=0,old_pir_trigger_count=0,pir_triggered=0,old_s=-1;
 
-uint32_t next_pir_trigger = 0;
-const int time_between_pir_triggers = 2000;
-
-uint32_t next_lux_read = 0;
-const int time_between_lux_reads = 250;
+uint32_t next_pir_trigger = 0, next_lux_read = 0;
 
 char info[256];
 
@@ -64,7 +62,7 @@ void loop()
     if (pir_triggered)
     {
       pir_trigger_count++;
-      next_pir_trigger = now + time_between_pir_triggers;
+      next_pir_trigger = now + millis_between_pir_triggers;
     }
   }
   else
@@ -80,7 +78,7 @@ void loop()
       lux = light_sensor.getLUX();
 
     lux_threshold_exceeded = (lux > lux_threshold);
-    next_lux_read = now + time_between_lux_reads;    
+    next_lux_read = now + millis_between_lux_reads;    
   }
 
   int32_t s = (now / 1000 ) % 60;
