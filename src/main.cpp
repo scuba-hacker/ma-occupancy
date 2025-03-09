@@ -1,12 +1,26 @@
 #include <Arduino.h>
 
 #include <M5StickCPlus.h>
-//#include <M5_DLight.h>
+#include <M5_DLight.h>
+
+const bool test_with_stubbed_sensors=true;
 
 const int PIR_GPIO = 36;
-//M5_DLight light_sensor;
-uint16_t lux;
-int trigger_count=0;
+M5_DLight light_sensor;
+
+uint16_t lux=0, old_lux=0;
+const uint16_t lux_threshold=10000;
+bool lux_threshold_exceeded=false;
+bool old_lux_threshold_exceeded=true;
+bool lux_change=false;
+
+int pir_trigger_count=0,old_pir_trigger_count=0,pir_triggered=0,old_s=-1;
+
+uint32_t next_pir_trigger = 0;
+const int time_between_pir_triggers = 2000;
+
+uint32_t next_lux_read = 0;
+const int time_between_lux_reads = 250;
 
 char info[256];
 
@@ -16,30 +30,16 @@ void setup()
 {
   M5.begin();
 
-  M5.Lcd.fillScreen(WHITE);
-  delay(500);
-  M5.Lcd.fillScreen(RED);
-  delay(500);
-  M5.Lcd.fillScreen(GREEN);
-  delay(500);
-  M5.Lcd.fillScreen(BLUE);
-  delay(500);
-  M5.Lcd.fillScreen(BLACK);
-  delay(500);
-/*
-
   USB_SERIAL.begin(115200);
 
-  M5.Lcd.setCursor(0,0,2);
-  M5.Lcd.setRotation(0);
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.println("PIR TEST");
-  USB_SERIAL.println("PIR TEST");
+  M5.Lcd.setRotation(1);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextWrap(false);
+  M5.Lcd.setCursor(0, 0, 4);
 
-  // PIR Pin on HAT
   pinMode(PIR_GPIO, INPUT_PULLUP);
 
-  //light_sensor.begin();
+  light_sensor.begin();
 
   // CONTINUOUSLY_H_RESOLUTION_MODE
   // CONTINUOUSLY_H_RESOLUTION_MODE2
@@ -47,28 +47,84 @@ void setup()
   // ONE_TIME_H_RESOLUTION_MODE
   // ONE_TIME_H_RESOLUTION_MODE2
   // ONE_TIME_L_RESOLUTION_MODE
-//  light_sensor.setMode(CONTINUOUSLY_H_RESOLUTION_MODE);
-*/
+  light_sensor.setMode(CONTINUOUSLY_H_RESOLUTION_MODE);
 }
 
 void loop()
 {
-  /*
-  int triggered=0;
-//  lux = light_sensor.getLUX();
-//  triggered = digitalRead(36);
-  triggered = 1;
-  lux = 312;
+  uint32_t now = millis();
 
-  trigger_count += triggered;
+  if (now > next_pir_trigger)
+  {
+    if (test_with_stubbed_sensors)
+      pir_triggered = 1;
+    else
+      pir_triggered = digitalRead(36);
 
-  M5.Lcd.setCursor(60, 0, 4);
-  sprintf(info, "Triggered: %d\nLux: %d\n",trigger_count,lux);
-  M5.Lcd.println(info);
+    if (pir_triggered)
+    {
+      pir_trigger_count++;
+      next_pir_trigger = now + time_between_pir_triggers;
+    }
+  }
+  else
+  {
+    pir_triggered=0;
+  }
 
-  sprintf(info, "%d,%d,%d",triggered,trigger_count,lux);
+  if (now > next_lux_read)
+  {
+    if (test_with_stubbed_sensors)
+      lux = random(0,65535);
+    else
+      lux = light_sensor.getLUX();
 
-  USB_SERIAL.println(info);
-  delay(500);
-  */
+    lux_threshold_exceeded = (lux > lux_threshold);
+    next_lux_read = now + time_between_lux_reads;    
+  }
+
+  int32_t s = (now / 1000 ) % 60;
+  int32_t m = (now / 60000 ) % 60;
+  int32_t h = (now / 3600000 );
+
+  if (pir_trigger_count != old_pir_trigger_count)
+  {
+    M5.Lcd.setCursor(0, 0);
+    M5.Lcd.setTextColor(TFT_GREEN,TFT_BLACK);
+    sprintf(info, "T.%d",pir_trigger_count);
+    M5.Lcd.print(info);
+    old_pir_trigger_count = pir_trigger_count;
+  }
+
+  if (old_lux != lux)
+  {
+    M5.Lcd.setCursor(0, 44);
+    M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+    sprintf(info, "Lux.%d            ", lux);
+    M5.Lcd.print(info);
+
+    lux_change = (lux >  lux_threshold && !old_lux_threshold_exceeded ||
+                  lux <= lux_threshold &&  old_lux_threshold_exceeded);
+                  
+    old_lux = lux;
+    old_lux_threshold_exceeded = lux_threshold_exceeded;
+  }
+
+  if (old_s != s)
+  {
+    M5.Lcd.setCursor(0, 93);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    sprintf(info, "%02d:%02d:%02d",h, m, s);
+    M5.Lcd.print(info);
+    old_s = s;
+  }
+
+  if (lux_change || pir_triggered)
+  {
+    sprintf(info, "%d,%d,%d,%02d:%02d:%02d",pir_triggered,pir_trigger_count,lux,h,m,s);
+    USB_SERIAL.println(info);
+
+    lux_change = false;
+    pir_triggered = 0;
+  }
 }
